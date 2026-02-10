@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interactive Particle Reveal</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background-color: #111;
+        overflow: hidden;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        height: 100vh;
+        width: 100vw;
+        position: relative;
+      }
+
+      /* The image hidden behind the canvas */
+      #bg-image {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 0;
+        /* A nice landscape image */
+        background-image: url("https://images.unsplash.com/photo-1493246507139-91e8fad9978e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80");
+        background-position: center;
+        background-size: cover;
+      }
+
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 1;
+        /* Make sure canvas doesn't capture touch actions allowing scrolling if needed, 
+               but here we want full interaction */
+        touch-action: none;
+      }
+
+      .hint {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: rgba(255, 255, 255, 0.8);
+        background: rgba(0, 0, 0, 0.5);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        z-index: 5;
+        pointer-events: none;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Background Image Container -->
+    <div id="bg-image"></div>
+
+    <canvas id="canvas1"></canvas>
+
+    <div class="hint">Hover to Reveal</div>
+
+    <script>
+      const canvas = document.getElementById("canvas1");
+      const ctx = canvas.getContext("2d");
+
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      let particleArray = [];
+
+      // Configuration
+      // Increased slightly from 5 to 8 for performance (thousands of particles)
+      // Decrease this value for higher resolution but slower performance
+      const particleSize = 8;
+
+      // Interaction Radius
+      const mouse = {
+        x: null,
+        y: null,
+        radius: 150,
+      };
+
+      window.addEventListener("mousemove", function (event) {
+        mouse.x = event.x;
+        mouse.y = event.y;
+      });
+
+      // Handle touch for mobile
+      window.addEventListener("touchmove", function (event) {
+        mouse.x = event.touches[0].clientX;
+        mouse.y = event.touches[0].clientY;
+      });
+
+      class Particle {
+        constructor(x, y, color) {
+          this.x = x;
+          this.y = y;
+          this.baseX = x;
+          this.baseY = y;
+          this.size = particleSize;
+          // Physics weight
+          this.density = Math.random() * 30 + 1;
+
+          this.color = color;
+        }
+
+        draw() {
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          ctx.rect(this.x, this.y, this.size + 1, this.size + 1); // +1 to avoid gaps
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        update() {
+          // Calculate distance from mouse
+          let dx = mouse.x - this.x;
+          let dy = mouse.y - this.y;
+          let distance = Math.sqrt(dx * dx + dy * dy);
+
+          // Repulsion Logic
+          let forceDirectionX = dx / distance;
+          let forceDirectionY = dy / distance;
+          let maxDistance = mouse.radius;
+
+          // Force increases as you get closer
+          let force = (maxDistance - distance) / maxDistance;
+
+          // Direction to move
+          let directionX = forceDirectionX * force * this.density;
+          let directionY = forceDirectionY * force * this.density;
+
+          if (distance < mouse.radius) {
+            // Move away from mouse
+            this.x -= directionX * 3; // Multiplier for stronger push
+            this.y -= directionY * 3;
+          } else {
+            // Return to base grid position
+            if (this.x !== this.baseX) {
+              let dx = this.x - this.baseX;
+              this.x -= dx / 10; // Easing speed (higher = slower return)
+            }
+            if (this.y !== this.baseY) {
+              let dy = this.y - this.baseY;
+              this.y -= dy / 10;
+            }
+          }
+        }
+      }
+
+      function init() {
+        particleArray = [];
+
+        // 1. Draw text on canvas to capture coordinates
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Responsive font settings
+        const fontSize = Math.min(canvas.width / 12, 80);
+        ctx.font = `900 ${fontSize}px Arial, sans-serif`;
+        ctx.fillStyle = "black";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const lineHeight = fontSize * 1.2;
+
+        // Draw the 3 lines
+        ctx.fillText("Experience", centerX, centerY - lineHeight);
+        ctx.fillText("Beyond", centerX, centerY);
+        ctx.fillText("Imagination", centerX, centerY + lineHeight);
+
+        // 2. Scan pixel data
+        const textCoordinates = ctx.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+
+        // 3. Clear canvas again so we only render particles later
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 4. Create grid
+        for (let y = 0; y < canvas.height; y += particleSize) {
+          for (let x = 0; x < canvas.width; x += particleSize) {
+            // Check if this pixel was part of the text we just drew
+            const index = y * 4 * textCoordinates.width + x * 4;
+            const alpha = textCoordinates.data[index + 3];
+
+            let color;
+            // If pixel is opaque (part of text), make particle black
+            if (alpha > 128) {
+              color = "black";
+            } else {
+              // Otherwise use the whitish background color
+              const val = Math.floor(Math.random() * (255 - 238) + 238);
+              color = `rgb(${val}, ${val}, ${val})`;
+            }
+
+            particleArray.push(new Particle(x, y, color));
+          }
+        }
+      }
+
+      function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Optimization: only update particles close to mouse or moving?
+        // For this demo, we update all, but it might be heavy on large screens.
+        for (let i = 0; i < particleArray.length; i++) {
+          particleArray[i].draw();
+          particleArray[i].update();
+        }
+        requestAnimationFrame(animate);
+      }
+
+      init();
+      animate();
+
+      // Handle resizing
+      window.addEventListener("resize", () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        init();
+      });
+
+      // Reset mouse when leaving window so particles close up
+      window.addEventListener("mouseout", () => {
+        mouse.x = undefined;
+        mouse.y = undefined;
+      });
+    </script>
+  </body>
+</html>

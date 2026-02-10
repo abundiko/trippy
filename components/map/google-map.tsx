@@ -42,15 +42,25 @@ export function GoogleMap({ places, selectedPlace, onPlaceSelect, center }: Goog
 
         // Add new markers
         places.forEach((place) => {
+            const isSelected = selectedPlace?.id === place.id;
+
             const marker = new google.maps.Marker({
                 position: { lat: place.lat, lng: place.lng },
                 map: mapInstanceRef.current!,
                 title: place.name,
-                icon: {
-                    url: selectedPlace?.id === place.id
-                        ? 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png'
-                        : 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
-                },
+                icon: isSelected
+                    ? {
+                        url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+                        scaledSize: new google.maps.Size(50, 50), // Larger for selected
+                        anchor: new google.maps.Point(25, 50), // Adjust anchor point
+                    }
+                    : {
+                        url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
+                        scaledSize: new google.maps.Size(35, 35), // Normal size
+                        anchor: new google.maps.Point(17.5, 35), // Center point
+                    },
+                animation: isSelected ? google.maps.Animation.BOUNCE : undefined,
+                zIndex: isSelected ? 1000 : 1, // Selected marker appears on top
             });
 
             marker.addListener('click', () => {
